@@ -140,17 +140,29 @@ export default function MailDashboard() {
   const [bulkStatus, setBulkStatus]       = useState(null);
   const [deleteStatus, setDeleteStatus]   = useState(null);
 
+  const [inboxTotal, setInboxTotal] = useState(0);
+  const [sentTotal, setSentTotal]   = useState(0);
+
   const fetchEmails = useCallback(async () => {
     const type = view === "inbox" ? "inbound" : view === "sent" ? "outbound" : null;
     if (!type) return;
     setLoading(true);
     setDbError(null);
     try {
-      const res  = await fetch(`/api/emails${type ? `?type=${type}` : ""}`);
-      const data = await res.json();
+      // Fetch current view emails + both totals in parallel
+      const [res, inboxRes, sentRes] = await Promise.all([
+        fetch(`/api/emails?type=${type}`),
+        fetch("/api/emails?type=inbound"),
+        fetch("/api/emails?type=outbound"),
+      ]);
+      const data       = await res.json();
+      const inboxData  = await inboxRes.json();
+      const sentData   = await sentRes.json();
       if (!res.ok) throw new Error(data.error || "Failed to load emails");
       setEmails(data.emails || []);
       setUnread(data.unreadCount || 0);
+      setInboxTotal(inboxData.emails?.length || 0);
+      setSentTotal(sentData.emails?.length || 0);
     } catch (e) {
       setDbError(e.message);
       setEmails([]);
@@ -267,9 +279,20 @@ export default function MailDashboard() {
   );
 
   const sentCount = emails.filter(e => e.type === "outbound").length;
+  const inboxCount = emails.filter(e => e.type === "inbound").length;
   const isListView = view === "inbox" || view === "sent";
 
   function switchView(key) { setView(key); setSidebarOpen(false); }
+
+  async function logout() {
+    await fetch("/api/auth/logout", { method: "POST" });
+    window.location.href = "/login";
+  }
+
+  async function logout() {
+    await fetch("/api/auth", { method: "DELETE" });
+    window.location.href = "/login";
+  }
 
   const navItems = [
     { key: "inbox",   label: "Inbox",     Icon: Icons.Inbox },
@@ -324,10 +347,21 @@ export default function MailDashboard() {
           <div className={styles.sidebarFooter}>
             <div className={styles.agentCard}>
               <div className={styles.agentAvatar}><Icons.User /></div>
-              <div>
+              <div style={{flex:1}}>
                 <div className={styles.agentName}>Jay Franco</div>
                 <div className={styles.agentRole}>Support Agent</div>
               </div>
+              <button
+                onClick={logout}
+                title="Sign out"
+                style={{background:"none",border:"none",cursor:"pointer",color:"rgba(255,255,255,0.4)",padding:"4px",display:"flex",alignItems:"center",transition:"color 0.15s"}}
+                onMouseEnter={e=>e.currentTarget.style.color="rgba(255,255,255,0.8)"}
+                onMouseLeave={e=>e.currentTarget.style.color="rgba(255,255,255,0.4)"}
+              >
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                  <path d="M6 2H3a1 1 0 00-1 1v10a1 1 0 001 1h3M11 11l3-3-3-3M14 8H6" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </button>
             </div>
           </div>
         </aside>
@@ -342,11 +376,11 @@ export default function MailDashboard() {
                 <span className={styles.statLbl}>Unread</span>
               </div>
               <div className={styles.statItem}>
-                <span className={styles.statVal}>{emails.length}</span>
-                <span className={styles.statLbl}>Total</span>
+                <span className={styles.statVal}>{inboxTotal}</span>
+                <span className={styles.statLbl}>Inbox</span>
               </div>
               <div className={styles.statItem}>
-                <span className={`${styles.statVal} ${styles.accent}`}>{sentCount}</span>
+                <span className={`${styles.statVal} ${styles.accent}`}>{sentTotal}</span>
                 <span className={styles.statLbl}>Sent</span>
               </div>
             </div>
